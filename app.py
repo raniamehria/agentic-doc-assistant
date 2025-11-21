@@ -1,4 +1,9 @@
 import streamlit as st
+
+# Initialize chat history
+if "history" not in st.session_state:
+    st.session_state["history"] = []
+
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from agent.rag import RAGPipeline
@@ -51,6 +56,7 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
+# ====== TITRE ======
 st.markdown("<div class='main-title'>Agentic Document Assistant</div>", unsafe_allow_html=True)
 st.markdown(
     "<div class='subtitle'>A simple assistant to help young people understand, prepare and manage administrative documents.</div>",
@@ -72,19 +78,20 @@ if uploaded is not None:
 else:
     st.sidebar.info("Upload a PDF to unlock all actions.")
 
-# ====== ONGLET PRINCIPAUX ======
-tab_overview, tab_qa, tab_steps, tab_letter, tab_checklist, tab_simplify = st.tabs(
-    [
-        " Overview",
-        "Q&A on the document",
-        " Step-by-step guidance",
-        " Generate administrative letter / email",
-        " Checklist",
-        " Simplified explanation / translation",
-    ]
-)
+# ====== LES TABS ======
+tab_overview, tab_qa, tab_steps, tab_letter, tab_checklist, tab_simplify, tab_general = st.tabs([
+    " Overview",
+    "Q&A on the document",
+    " Step-by-step guidance",
+    " Generate administrative letter / email",
+    " Checklist",
+    " Simplified explanation / translation",
+    " General admin question"
+])
 
-# ---------- 1. OVERVIEW / SYNTHÈSE ----------
+# ======================================================================
+# 1. OVERVIEW
+# ======================================================================
 with tab_overview:
     st.markdown("<div class='section-title'>Automatic overview of the document</div>", unsafe_allow_html=True)
 
@@ -92,13 +99,23 @@ with tab_overview:
         st.info("Upload a document in the sidebar to see the overview.")
     else:
         if st.button("Generate overview", key="btn_overview"):
-            full_text = st.session_state["rag"].search("")  # récupérer tout le contenu
+            full_text = st.session_state["rag"].search("")  
             answer = summarize_document_tool(full_text, llm)
 
             st.subheader("Summary")
             st.write(answer.content)
 
-# ---------- 2. Q&A ----------
+            # Save to history
+            st.session_state["history"].append({
+                "type": "overview",
+                "question": "Overview request",
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 2. Q&A
+# ======================================================================
 with tab_qa:
     st.markdown("<div class='section-title'>Ask a question about the document</div>", unsafe_allow_html=True)
 
@@ -132,12 +149,22 @@ Give a clear, structured and concise answer.
             st.subheader("Document context used")
             st.write(context)
 
-# ---------- 3. ÉTAPES / GUIDANCE ----------
+            # Save to history
+            st.session_state["history"].append({
+                "type": "qa",
+                "question": question,
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 3. STEP-BY-STEP
+# ======================================================================
 with tab_steps:
     st.markdown("<div class='section-title'>Step-by-step guidance</div>", unsafe_allow_html=True)
 
     steps_question = st.text_input(
-        "Describe what you need to do (for example: “What are the steps for this appointment?”)",
+        "Describe what you need to do:",
         key="steps_question"
     )
 
@@ -147,26 +174,35 @@ with tab_steps:
         elif not steps_question.strip():
             st.warning("Please describe your request.")
         else:
-            # On peut donner le texte du document en contexte au tool
             full_text = st.session_state["rag"].search("")
             answer = procedural_steps_tool(steps_question, llm, context=full_text)
 
             st.subheader("Step-by-step plan")
             st.write(answer.content)
 
-# ---------- 4. LETTRE / MAIL ADMINISTRATIF ----------
+            # Save to history
+            st.session_state["history"].append({
+                "type": "steps",
+                "question": steps_question,
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 4. LETTER GENERATION
+# ======================================================================
 with tab_letter:
     st.markdown("<div class='section-title'>Generate an administrative letter or email</div>", unsafe_allow_html=True)
 
     letter_goal = st.text_area(
-        "Explain what you need (example: “Write an email to ask for a new appointment because I missed the first one.”)",
+        "Explain what you need:",
         key="letter_goal",
         height=120
     )
 
     if st.button("Generate letter / email", key="btn_letter"):
         if not st.session_state["doc_loaded"]:
-            st.warning("Upload a document first, so the letter can reuse the right information.")
+            st.warning("Upload a document first.")
         elif not letter_goal.strip():
             st.warning("Please describe your situation.")
         else:
@@ -176,12 +212,22 @@ with tab_letter:
             st.subheader("Proposed letter / email")
             st.write(answer.content)
 
-# ---------- 5. CHECKLIST ----------
+            # Save to history
+            st.session_state["history"].append({
+                "type": "letter",
+                "question": letter_goal,
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 5. CHECKLIST
+# ======================================================================
 with tab_checklist:
     st.markdown("<div class='section-title'>Checklist of documents and actions</div>", unsafe_allow_html=True)
 
     checklist_goal = st.text_input(
-        "For which administrative task do you want a checklist ?",
+        "For which administrative task do you want a checklist?",
         key="checklist_goal"
     )
 
@@ -197,17 +243,23 @@ with tab_checklist:
             st.subheader("Checklist")
             st.write(answer.content)
 
-# ---------- 6. EXPLICATION SIMPLIFIÉE / TRADUCTION ----------
+            # Save to history
+            st.session_state["history"].append({
+                "type": "checklist",
+                "question": checklist_goal,
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 6. SIMPLIFIED EXPLANATION
+# ======================================================================
 with tab_simplify:
     st.markdown("<div class='section-title'>Simplified explanation or translation</div>", unsafe_allow_html=True)
 
     mode = st.selectbox(
         "Choose the style:",
-        [
-            "Simple French (young audience)",
-            "Formal French",
-            "English",
-        ],
+        ["Simple French (young audience)", "Formal French", "English"],
         key="simplify_mode"
     )
 
@@ -220,3 +272,66 @@ with tab_simplify:
 
             st.subheader("Simplified explanation")
             st.write(answer.content)
+
+            # Save to history
+            st.session_state["history"].append({
+                "type": "simplify",
+                "question": mode,
+                "answer": answer.content
+            })
+
+# ---------- 7. GENERAL ADMIN QUESTION ----------
+with tab_general:
+    st.markdown("<div class='section-title'>Ask any administrative question (without document)</div>", unsafe_allow_html=True)
+
+    general_question = st.text_input("Your question:", key="general_admin_question")
+
+    if st.button("Ask", key="btn_general"):
+        if not general_question.strip():
+            st.warning("Please write a question.")
+        else:
+            prompt = f"""
+You are an expert in French administrative procedures for young adults.
+Answer the following question clearly and cite trustworthy sources (service-public.fr, officiel, préfecture, etc.).
+
+QUESTION:
+{general_question}
+
+FORMAT:
+- Clear explanation
+- Steps if relevant
+- Official sources
+"""
+            answer = llm.invoke(prompt)
+
+            st.subheader("Answer")
+            st.write(answer.content)
+
+            # Save to history
+            st.session_state["history"].append({
+                "type": "general",
+                "question": general_question,
+                "answer": answer.content
+            })
+
+
+# ======================================================================
+# 7. SIDEBAR: HISTORY
+# ======================================================================
+st.sidebar.markdown("### Conversation History")
+
+if st.session_state["history"]:
+    for item in st.session_state["history"]:
+        st.sidebar.markdown(f"""
+**{item['type'].title()}**
+
+• **Question**  
+{item['question']}
+
+• **Answer**  
+{item['answer'][:180]}...
+
+---
+""")
+else:
+    st.sidebar.info("No interactions yet.")
